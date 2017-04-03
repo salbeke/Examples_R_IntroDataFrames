@@ -1,0 +1,190 @@
+---
+title: "R Example: Introduction to Dataframes"
+output: html_notebook
+---
+
+This code was developed by: <br>
+Shannon E. Albeke, Ph.D. <br>
+University of Wyoming <br>
+Wyoming Geographic Information Science Center <br>
+Laramie, WY 82071 <br>
+salbeke@uwyo.edu / 307-223-2129 <br>
+
+
+
+```{r}
+#Notice the colored text, when something is green, it is commented out and not executed. 
+#Thus making comments to your code easy and very useful
+
+#Let's learn a little bit about R objects and executing code
+#simple arithmetic
+2+2
+
+#Store the value into a variable, be sure to look at your workspace. Notice we use the pipe "<-"
+# instead of an equal sign "=". Use the pipe for variable declaration, equal for function arguments.
+a<- 2+2
+
+#create a list of numbers. This is also called a vector of type=numeric
+b<- c(10, 20, 30, 40, 50)
+
+#this is where R leverages a lot of power and has become very popular among researchers
+( ab<- a*b )
+
+#lets convert the numeric vector to something you may be more familiar with.
+#data.frames are the R version of a spreadsheet or database table.
+#Each column of a data.frame is considered a vector of a single data-type
+dfv<- data.frame(col1=ab) #vertical table, 1 col, 5 rows
+
+#You can look at the data stored in memory within the data.frame using this function
+View(dfv) #or you can use the mouse and click on the object in your environment
+
+#add 2 columns to the data frame using the column bind function
+dfv<- cbind(dfv, col2=c(20, 30, 40, 50, 60), more=c(5:9))
+
+#view the data.frame structure/data types. Notice that the column names are the
+# same as we assigned within the arguments of the cbind function.
+str(dfv)
+
+#It's important to understand what happens when you convert/coerce from one data-type to another
+#convert a column from numeric to factor and add results to new column
+dfv[,4]<- as.factor(dfv[ , 2]) #Notice we are using the index for column, R will assign a column name
+# The factor data-type is a categorical representation of unique values.
+# Also notice that R will not name a column that begins with a number, thus V4, not just "4"
+str(dfv)
+#push col4 back to integer and into a new column
+dfv$AsInt<- as.integer(dfv[ , 4])
+dfv$AsInt
+# Notice what happened to the original values when converting a factor to numeric!!
+# To avoid the incorrect coersion, you must first convert to a character then numeric
+dfv$AsInt<- as.integer(as.character(dfv[ , 4]))
+dfv$AsInt #the values in column 4 are now back to their original values
+
+#///////////////
+#extract specific values from the 5 x 5 data frame
+#row 1, col 3 USE INDEX
+dfv[1,3]
+#row 1, col 3 USE NAMES
+names(dfv) #gives a list of column names
+rownames(dfv) #gives a list of row names
+
+dfv["1", "more"] #Notice names are characters, thus use of " " is necessary
+
+```
+
+```{r}
+#once you have a data.frame with your data, you can perform all sorts of fun things, e.g.
+#averages for each column of data
+
+(colavg<- colMeans(dfv[,]) )
+
+```
+You will notice that the previous line threw an error. This is because column 4 is a factor. 
+```{r}
+#first remove col4
+dfv<- dfv[,-c(4)]
+
+#rerun the colMeans function
+(colavg<- colMeans(dfv[,]) )
+
+#NA means a NULL value, you have to be able to deal with them
+dfv[1,3]<-NA
+
+# In this example the 3rd column has an NA, thus R doesn't want to think for you by changing 
+# the denominator and returns an NA
+( colavg<- colMeans(dfv[,]) )
+
+#By looking at the arguments of the colMeans function, you will see the na.rm argument
+( colavg<- colMeans(dfv[,], na.rm = TRUE) )
+
+#or ...sapply is a great function for iterating through an object, in this case several columns
+( colavg2<- sapply(dfv, FUN=function(x){mean(x, na.rm=TRUE)}) ) #average
+( colsd<- sapply(dfv, FUN=function(x){sd(x, na.rm=TRUE)}) ) #standard deviation
+#or
+summary(dfv)
+
+#quick barplot...this is too simple, we will use ggplot2 for other plotting examples
+barplot(colavg2)
+#plot same date with confidence intervals
+require(plotrix)
+plotCI(colavg2, uiw=colsd, ylab="Random #", xlab="Column")
+
+#As you can see, R can do a lot of things very quickly and easily that you have to take a little extra time to perform
+#in software such as Excel, Access and ArcGIS. 
+```
+
+Now we will work with some real data and learn a couple of techniques for dealing with data that may not be given to you in an ideal format. One of the best lessons I can pass onto you is that when working with data, more often than not, if you have a dataset that is 1 row for each unique observation, data visualization and analyses will be much easier and efficient. Let's begin!
+
+```{r}
+#////////////////////////////////////////////////////
+#Begin Analyses section
+require(readxl)
+require(ggplot2)
+
+#set the working directory
+setwd("C:/R_Intro")
+
+#Read in the NDVI data from Ramesh ndvi. This requires the readxl package.
+#We wrap the excel funtion and make sure the class is data.frame
+dat<- data.frame(read_excel("ndvi_laramie_basin.xlsx"))
+#Investigate our data
+View(dat)
+str(dat)
+#plot the Normal data as lines
+( p<- ggplot() + geom_line(data = dat, aes(x = Julian.Day, y = NDVI_Normal)) )
+
+#plot second series, Dry
+( p<- p + geom_line(data = dat, aes(x = Julian.Day, y = NDVI_Dry)) )
+
+#The question is, are NDVI values significantly different between seasons?
+# To test, reformat the data and run an anova to test for significant differences,
+# this means adding a Normal/Dry category and moving the data from columns to rows
+# By doing this we are creating a data.frame that is 1 observation per row, which
+# is ideal in my mind. 
+
+#Create a new data.frame the old fashioned way (we will demonstrate useful functions later)
+#First get the Dry season data
+ndvi<- data.frame(DOY = dat$Julian.Day, Season = "Dry", NDVI = dat$NDVI_Dry)
+#append the Normal data rows
+ndvi<- rbind(ndvi, data.frame(DOY = dat$Julian.Day, Season = "Normal", NDVI = dat$NDVI_Normal))
+
+#make the same plot as before, but use the grouping variable so it is easier/faster!
+( p<- ggplot() + geom_line(data = ndvi, aes(x = DOY, y = NDVI, group = Season, color = Season)) )
+
+#Run the ANOVA
+mod.aov<- aov(formula = NDVI ~ Season, data = ndvi)
+summary(mod.aov)
+#Run a Linear Regression
+mod.lm<- lm(formula = NDVI ~ Season, data = ndvi)
+summary(mod.lm)
+
+#plot the NDVI as it relates to season, defaults to a box/whisker given season is a factor
+plot(ndvi$Season, ndvi$NDVI)
+#you will notice that there isn't a difference between seasons, but our eyes say different
+# This is because Wyoming has winter, NDVI measures chlorophyll, thus limit data to 
+# growing season.
+
+#Now filter the data.frame to be summer time (DOY between 140 and 260)
+# So we query which rows match values from a column
+grow<- ndvi[ndvi$DOY >= 140 & ndvi$DOY <= 260,]
+
+#Re-run the statistics
+#Run the ANOVA
+mod.aov<- aov(formula = NDVI ~ Season, data = grow)
+summary(mod.aov)
+#Run a Linear Regression
+mod.lm<- lm(formula = NDVI ~ Season, data = grow)
+summary(mod.lm)
+
+#plot the NDVI as it relates to season
+( p<- ggplot() + geom_line(data = grow, aes(x = DOY, y = NDVI, group = Season, color = Season)) )
+
+#OK, great job! We have shown a difference. Now we can demonstrate a function
+# based approach for modifying the data to be 1 row / observation
+require(reshape2)
+
+#use the melt function to create a vertical table
+ndvi.melt<- melt(data = dat, id.vars = "Julian.Day", 
+                 variable.name = "Season", value.name = "NDVI")
+
+```
+
